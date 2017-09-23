@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset=utf-8 />
+  <title>US Unemployment Rates</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css" />
+  <link href='http://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: whitesmoke;
+      font-family: Lato, sans-serif;
+      color: #0D0000;
+    }
+
+    header {
+      padding: 6px 10%;
+    }
+
+    h1 {
+      position: absolute;
+      z-index: 650;
+      top: 10px;
+      left: 60px;
+      padding: 8px 15px;
+      margin: 0;
+      color: whitesmoke;
+      font-size: 1.5em;
+      background: rgba(25, 25, 25, 0.8);
+      border-radius: 5px;
+    }
+
+    h2 {
+      display: inline-block;
+      color: #001323;
+    }
+
+    #map {
+      position: absolute;
+      width: 100%;
+      top: 0;
+      bottom: 0;
+    }
+
+    footer {
+      padding: 6px 10%;
+      width: 80%;
+    }
+
+    p {
+      font-size: 1em;
+      color: #001323;
+    }
+
+    .legend {
+      padding: 6px 8px;
+      font-size: 1em;
+      background: rgba(75, 75, 75, 0.8);
+      color: whitesmoke;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+      width: 180px;
+    }
+
+    .legend h3 {
+      font-size: 1.1em;
+      font-weight: bold;
+      line-height: 1em;
+      color: whitesmoke;
+      margin: 0;
+    }
+
+    .legend h3 span {
+      font-size: 1.3em;
+      margin: 0 20px 0 0;
+    }
+
+    .legend ul {
+      list-style-type: none;
+      padding: 0;
+      margin: 12px 4px 0;
+    }
+
+    .legend li {
+      height: 22px;
+    }
+
+    .legend span {
+      width: 30px;
+      height: 20px;
+      float: left;
+      margin-right: 10px;
+    }
+
+    #ui-controls {
+      width: 176px;
+      padding: 8px 25px 8px 15px;
+      background: rgba(75, 75, 75, 0.8);
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+      color: whitesmoke;
+    }
+
+    #ui-controls .min {
+      float: left;
+    }
+
+    #ui-controls .max {
+      float: right;
+      margin-right: -15px;
+    }
+
+    .year-slider {
+      width: 100%;
+    }
+
+    label {
+      font-size: 1.1em;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>U.S. Unemployment Rates: 2001 &ndash; 2015</h1>
+  <div id="map"></div>
+  <div id="ui-controls">
+    <label><span class="min">2001</span><span class="max">2015</span>
+            <input type="range" min = "2001", max= "2015",
+                   value = "2001", step= "1", class="year-slider">
+        </label>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.1.2/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/1.2.1/chroma.min.js"></script>
+
+  <script>
+    // map options
+    var options = {
+      center: [39.30, -98.22], //center the map
+      zoom: 4.4, //zoom is 4, .4 adds granularity to the zoom
+      zoomSnap: .1,
+      zoomControl: false //can't move it around
+    }
+
+    // create the Leaflet map
+    var map = L.map('map', options);
+
+    // request tiles and add to map
+    var tiles = L.tileLayer('http://{s}.tile.stamen.com/toner-background/{z}/{x}/{y}.{ext}', {
+      attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      subdomains: 'abcd',
+      ext: 'png'
+    }).addTo(map);
+
+    // AJAX request for GeoJSON data
+    $.getJSON("data/us-counties.json", function(counties) {
+
+      Papa.parse('data/us-unemployment-counties3.csv', {
+        download: true,
+        header: true,
+        complete: function(data) {
+
+          // // data is accessible to us here
+          // console.log('data: ', data);
+
+          // // note that counties is also accessible here!
+          // console.log('counties: ', counties);
+
+          processData(counties, data); //call function that will join counties and data
+        }
+      }); // end of Papa.parse()
+
+    }); // end of $.getJSON()
+
+
+    function processData(counties, data) {
+
+      for (var county in counties.features) {
+
+        //create shorthand
+        var props = counties.features[county].properties;
+        //loop through the GeoJSON data's features and loop through the csv data
+        for (var d in data.data) {
+
+          if (props.GEOID == data.data[d].FIP_CONCAT) { //these are the two that match and form the join, Jay gave me the clue to concatenate
+            counties.features[county].properties = data.data[d];
+            break;
+          }
+        }
+      }
+      //creates an empty array to store all the data values
+      var rates = [];
+      //iterates through all the counties
+      counties.features.map(function(county) { //iterates through all the props of each county
+        for (var prop in county.properties) {
+          //conditionally tests each attribute to verify it's a timestamp value (and not one of our FIPS codes)
+          if ($.isNumeric(county.properties[prop]) && prop != 'FIP_CONCAT' && prop != 'STATE_FIP' && prop != 'COUNTY_FIP' && prop != 'GEOID') {
+
+            rates.push(Number(county.properties[prop])); //pushes that value into an array
+          }
+        }
+      }); //creates an array with all the data values for each geographic unit for each year, at the beginning of the script.
+
+      // verify the result!
+      // console.log(rates);
+
+      var breaks = chroma.limits(rates, 'q', 5); //determine class breaks using the rates array, a quantile method, and 5 classes)
+      // creates a color generator that returns 5 classes of color using break values
+      var colorize = chroma.scale(chroma.brewer.OrRd).classes(breaks).mode('lab');
+
+     // console.log(colorize) // function (a){var b;return b=s(u(a)),m&&b[m]?b[m]():b}
+      var color = colorize(20);
+     // console.log(color); // a {_rgb: Array[4]}, an actual color value
+
+      drawMap(counties, colorize);
+      drawLegend(breaks, colorize);
+
+    } //end processData()
+
+    function drawMap(counties, colorize) {
+
+      // create Leaflet object with geometry data and add to map
+      var dataLayer = L.geoJson(counties, {
+        style: function(feature) {
+          return {
+            color: 'black',
+            weight: 1,
+            fillOpacity: 1,
+            fillColor: '#1f78b4'
+          };
+        }
+
+      }).addTo(map);
+
+      // add User interaction with mouseover, mouseout
+      dataLayer.eachLayer(function(layer) {
+        layer.on('mouseover', function(e) {
+          e.target.setStyle({ //changes layer color of selected
+            color: 'yellow'
+          }).bringToFront();
+
+        }).on("mouseout", function(e) {
+          e.target.setStyle({ // returns to original layer color
+            color: 'black'
+          });
+        })
+      });
+
+      createSliderUI(dataLayer, colorize);
+
+      updateMap(dataLayer, colorize, '2001');
+
+      // first set the zoom/center to the dataLayer's extent
+      map.fitBounds(dataLayer.getBounds());
+
+      // then back the zoom level off a bit (since we're viewing the map full screen)
+      map.setZoom(map.getZoom() - .2);
+
+    } //end drawMap function
+
+    function updateMap(dataLayer, colorize, currentYear) {
+
+      dataLayer.eachLayer(function(layer) {
+        //create shorthand
+        var props = layer.feature.properties;
+        //set style to colorize by the year selected
+        layer.setStyle({
+          fillColor: colorize(Number(props[currentYear]))
+        });
+
+        //        assemble string sequence of info for tooltip
+        var tooltipInfo = "<b>" + props["NAME"] + "</br>" +
+          "Unemployment rate: " + props[currentYear] + "%"
+
+        // bind a tooltip to layer with county-specific information
+        layer.bindTooltip(tooltipInfo, {
+          sticky: true
+        });
+      });
+
+    } //end updateMap function
+
+    function drawLegend(breaks, colorize) {
+      var legendControl = L.control({
+        position: 'topright'
+      });
+
+      legendControl.onAdd = function(map) {
+
+        var legend = L.DomUtil.create('div', 'legend');
+        return legend;
+
+      };
+
+      legendControl.addTo(map);
+
+      //select the newly created legend, select and populate the heading, creating an unordered list for the class ranges and store as reference to variable
+      var legend = $('.legend').html("<h3><span>2001</span>Unemployment Rates</h3><ul>");
+
+      //loop through the break values
+      for (var i = 0; i < breaks.length - 1; i++) {
+
+        //access the color for each class range
+        var color = colorize(breaks[i], breaks);
+
+        //build a list item with color block and values
+        var classRange = '<li><span style="background:' + color + '"></span> ' +
+          breaks[i].toLocaleString() + ' &mdash; ' +
+          breaks[i + 1].toLocaleString() + '</li>'
+
+        //append the list item to the list
+        $('.legend ul').append(classRange);
+      }
+
+      legend.append("</ul>");
+    } //end drawLegend()
+
+    function createSliderUI(dataLayer, colorize) {
+      var sliderControl = L.control({
+        position: 'bottomleft'
+      }); //creates a Leaflet control object and stores a reference to it in a variable
+
+      sliderControl.onAdd = function(map) {
+
+        var slider = L.DomUtil.get("ui-controls");
+
+        L.DomEvent.disableScrollPropagation(slider); //disables scrolling of map while using controls
+
+        L.DomEvent.disableClickPropagation(slider); //disables click events while using controls
+
+        return slider; //returns the slider from the onAdd method
+      }
+
+      sliderControl.addTo(map);
+      // select the form element using the class attribute value we gave it
+      $(".year-slider")
+        .on("input change", function() { //listens for a change
+          var currentYear = $(this).val(); //selects context of event
+          updateMap(dataLayer, colorize, currentYear); //calls function to updateMap
+          $('.legend h3 span').html(currentYear);
+        });
+    } // end createSliderUI()
+  </script>
+
+</body>
+
+</html>
